@@ -67,6 +67,16 @@ def test_selecting_a_folder_enables_album_analysis(qapp, tmp_path):
     assert window._current_folder == album
 
 
+def test_library_load_failure_is_shown_in_status_bar(qapp, tmp_path):
+    window = _make_window(tmp_path)
+    not_a_folder = tmp_path / "not_a_folder"
+    not_a_folder.write_bytes(b"")
+
+    window.library_panel.set_root(not_a_folder)
+
+    assert "Impossible de lire" in window.status_bar.currentMessage()
+
+
 def test_selecting_a_track_runs_analysis_and_updates_panels(qapp, monkeypatch, tmp_path):
     _, paths = _make_library(tmp_path, n_tracks=1)
     monkeypatch.setattr(workers, "analyze_track", _fake_analyze_track)

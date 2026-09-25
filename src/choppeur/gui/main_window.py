@@ -106,7 +106,9 @@ class MainWindow(QMainWindow):
 
         self.library_panel.track_selected.connect(self._on_track_selected)
         self.library_panel.folder_selected.connect(self._on_folder_selected)
+        self.library_panel.load_failed.connect(self._on_library_load_failed)
         self.candidates_panel.export_requested.connect(self._on_export_requested)
+        self.candidates_panel.preview_failed.connect(self._on_preview_failed)
 
         if self.settings.library_root:
             self.library_panel.set_root(Path(self.settings.library_root))
@@ -124,6 +126,9 @@ class MainWindow(QMainWindow):
     def _on_folder_selected(self, folder: Path) -> None:
         self._current_folder = folder
         self.analyze_album_button.setEnabled(True)
+
+    def _on_library_load_failed(self, folder: Path, message: str) -> None:
+        self.status_bar.showMessage(f"Impossible de lire {folder} : {message}", 8000)
 
     # --- analyse d'une piste ---------------------------------------------
 
@@ -195,6 +200,11 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.settings = dialog.settings()
             save_settings(self.settings)
+
+    # --- préécoute -------------------------------------------------------
+
+    def _on_preview_failed(self, message: str) -> None:
+        self.status_bar.showMessage(message, 8000)
 
     # --- export -------------------------------------------------------
 
