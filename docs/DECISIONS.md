@@ -47,3 +47,17 @@
   Sur une machine avec GPU NVIDIA, réinstaller `torch`/`torchaudio` avec les
   roues CUDA correspondantes (voir pytorch.org/get-started/locally) pour
   accélérer l'analyse.
+
+## Paquet distribuable (étape 11) : pas encore de paquet autonome
+- `docs/ROADMAP.md` reporte explicitement ce choix ("à décider à ce
+  moment-là"). Ce qui est fait pour l'instant : `pyproject.toml` produit un
+  paquet Python standard, validé avec `uv build` (`choppeur-0.1.0.tar.gz` +
+  `.whl`), avec le point d'entrée `choppeur = choppeur.app:main`.
+- Installation actuelle chez la personne à qui le logiciel est prêté :
+  `uv sync && uv run choppeur` (déjà documenté dans README.md), qui suppose
+  `uv` installé chez elle.
+- Non fait : un exécutable autonome (ex. PyInstaller) qui embarquerait
+  PySide6 + PyTorch. C'est notoirement fragile à mettre au point (taille,
+  compatibilité GPU/CPU selon la machine cible) ; le choix concret de l'outil
+  dépend de la machine de la personne à qui le logiciel sera prêté, donc
+  reporté comme prévu par la ROADMAP plutôt que décidé arbitrairement ici.
