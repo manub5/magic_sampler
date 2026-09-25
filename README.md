@@ -11,4 +11,9 @@ depuis sa bibliothèque d'albums, avec préécoute et export nommé.
     uv sync
     uv run choppeur
 
+## Développement
+    uv sync --group dev       # ruff, mypy, bandit, pytest, pre-commit
+    uv run pre-commit install # active les vérifications avant chaque commit
+    uv run pytest
+
 Documentation : `docs/SPEC.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`.

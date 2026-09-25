@@ -32,9 +32,7 @@ class SettingsDialog(QDialog):
         self._export_format.addItems(["wav", "flac"])
         self._export_format.setCurrentText(settings.export_format)
 
-        self._loop_lengths_bars = QLineEdit(
-            ",".join(str(bars) for bars in settings.loop_lengths_bars)
-        )
+        self._loop_lengths_bars = QLineEdit(",".join(str(bars) for bars in settings.loop_lengths_bars))
 
         self._candidates_per_track = QSpinBox()
         self._candidates_per_track.setRange(1, 50)
@@ -50,12 +48,13 @@ class SettingsDialog(QDialog):
         self._gpu_mode.setCurrentText(settings.gpu_mode)
 
         form = QFormLayout()
-        form.addRow("Dossier racine de la bibliothèque", self._row_with_browse(
-            self._library_root, self._browse_library_root
-        ))
-        form.addRow("Dossier cible d'export", self._row_with_browse(
-            self._export_dir, self._browse_export_dir
-        ))
+        form.addRow(
+            "Dossier racine de la bibliothèque",
+            self._row_with_browse(self._library_root, self._browse_library_root),
+        )
+        form.addRow(
+            "Dossier cible d'export", self._row_with_browse(self._export_dir, self._browse_export_dir)
+        )
         form.addRow("Format d'export", self._export_format)
         form.addRow("Longueurs de boucle (mesures, séparées par des virgules)", self._loop_lengths_bars)
         form.addRow("Nombre de candidats par piste", self._candidates_per_track)
@@ -92,9 +91,7 @@ class SettingsDialog(QDialog):
             self._export_dir.setText(directory)
 
     def settings(self) -> Settings:
-        lengths = tuple(
-            int(value) for value in self._loop_lengths_bars.text().split(",") if value.strip()
-        )
+        lengths = tuple(int(value) for value in self._loop_lengths_bars.text().split(",") if value.strip())
         return Settings(
             library_root=self._library_root.text() or None,
             export_dir=self._export_dir.text() or None,

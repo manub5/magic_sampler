@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread
+from PySide6.QtCore import QThread
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
 )
 
 from choppeur.core import audio_io
-from choppeur.core.audio_io import AUDIO_EXTENSIONS
 from choppeur.core.cache import AnalysisCache
 from choppeur.core.models import Analysis, Candidate, Track
 from choppeur.core.settings import (
@@ -31,14 +30,11 @@ from choppeur.gui.candidates_panel import CandidatesPanel
 from choppeur.gui.library_panel import LibraryPanel
 from choppeur.gui.settings_dialog import SettingsDialog
 from choppeur.gui.waveform_view import WaveformView
-from choppeur.gui.workers import AlbumAnalysisWorker, TrackAnalysisWorker, start_in_thread
-
-
-def _tracks_in_folder(folder: Path) -> list[Track]:
-    paths = sorted(
-        p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
-    )
-    return [audio_io.read_track(p) for p in paths]
+from choppeur.gui.workers import (
+    AlbumAnalysisWorker,
+    TrackAnalysisWorker,
+    start_in_thread,
+)
 
 
 class MainWindow(QMainWindow):
@@ -60,7 +56,9 @@ class MainWindow(QMainWindow):
         self._current_track: Track | None = None
         self._current_folder: Path | None = None
         self._thread: QThread | None = None
-        self._worker: QObject | None = None  # référence gardée : PySide6 ne la garde pas seul
+        # Référence gardée : PySide6 ne garde pas le worker en vie tout seul (voir
+        # _run_worker) une fois qu'il n'y a plus de variable Python qui le référence.
+        self._worker: TrackAnalysisWorker | AlbumAnalysisWorker | None = None
 
         self.library_panel = LibraryPanel()
         self.waveform_view = WaveformView()
@@ -133,6 +131,16 @@ class MainWindow(QMainWindow):
     # --- analyse d'une piste ---------------------------------------------
 
     def _on_track_selected(self, path: Path) -> None:
+        if self._is_analysis_running():
+            # Une analyse (piste ou album) est déjà en cours : la bibliothèque est
+            # désactivée pendant ce temps (voir _set_busy), donc ce cas ne devrait
+            # arriver que par un appel programmatique. Deux QThread simultanés sur
+            # le même MainWindow ont déjà fait planter l'appli en pratique (le
+            # second écrase la seule référence Python vers le premier, encore en
+            # cours) : on refuse plutôt que de risquer ça.
+            self.status_bar.showMessage("Une analyse est déjà en cours, patiente un instant.", 4000)
+            return
+
         track = audio_io.read_track(path)
         self._current_track = track
         self.status_bar.showMessage(f"Analyse de {track.title}…")
@@ -140,9 +148,11 @@ class MainWindow(QMainWindow):
         worker = TrackAnalysisWorker(track, self.settings, self.cache)
         worker.finished.connect(self._on_track_analyzed)
         worker.failed.connect(self._on_track_failed)
+        self._set_busy(True)
         self._run_worker(worker)
 
     def _on_track_analyzed(self, analysis: Analysis, candidates: list[Candidate]) -> None:
+        self._set_busy(False)
         samples, sample_rate = audio_io.load(analysis.track.path)
 
         self.waveform_view.set_waveform(samples, sample_rate)
@@ -150,36 +160,51 @@ class MainWindow(QMainWindow):
         self.candidates_panel.set_candidates(samples, sample_rate, analysis.track, candidates)
 
         self.status_bar.showMessage(
-            f"{analysis.track.title} — {round(analysis.tempo_bpm)} BPM, "
-            f"{len(candidates)} candidats",
+            f"{analysis.track.title} — {round(analysis.tempo_bpm)} BPM, {len(candidates)} candidats",
             5000,
         )
 
     def _on_track_failed(self, message: str) -> None:
+        self._set_busy(False)
         self.status_bar.showMessage(f"Échec de l'analyse : {message}", 8000)
 
     # --- analyse d'un album entier ---------------------------------------
 
     def _on_analyze_album_clicked(self) -> None:
+        if self._is_analysis_running():
+            self.status_bar.showMessage("Une analyse est déjà en cours, patiente un instant.", 4000)
+            return
+
         if self._current_folder is None:
             QMessageBox.information(self, "Choppeur", "Sélectionnez d'abord un dossier d'album.")
             return
 
-        tracks = _tracks_in_folder(self._current_folder)
-        if not tracks:
-            QMessageBox.information(self, "Choppeur", "Aucun fichier audio dans ce dossier.")
-            return
-
+        # Le dossier est parcouru dans le worker (voir AlbumAnalysisWorker.run), pas ici :
+        # sur un dossier réseau avec des milliers de pistes, lire les tags de chacune
+        # peut prendre du temps, et ça ne doit pas geler l'interface avant même que la
+        # barre de progression n'apparaisse.
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(tracks))
+        self.progress_bar.setRange(0, 0)  # indéterminée tant que le dossier n'est pas encore scanné
         self.progress_bar.setValue(0)
-        self.analyze_album_button.setEnabled(False)
+        self.status_bar.showMessage("Recherche des pistes de l'album…")
 
-        worker = AlbumAnalysisWorker(tracks, self.settings, self.cache)
+        worker = AlbumAnalysisWorker(self._current_folder, self.settings, self.cache)
+        worker.scan_done.connect(self._on_album_scan_done)
+        worker.scan_failed.connect(self._on_album_scan_failed)
         worker.progress.connect(self._on_album_progress)
         worker.track_failed.connect(self._on_album_track_failed)
         worker.finished.connect(self._on_album_finished)
+        self._set_busy(True)
         self._run_worker(worker)
+
+    def _on_album_scan_done(self, total: int) -> None:
+        if total == 0:
+            self.status_bar.showMessage("Aucun fichier audio dans ce dossier.", 5000)
+            return
+        self.progress_bar.setRange(0, total)
+
+    def _on_album_scan_failed(self, message: str) -> None:
+        self.status_bar.showMessage(f"Dossier devenu inaccessible : {message}", 8000)
 
     def _on_album_progress(self, done: int, total: int) -> None:
         self.progress_bar.setValue(done)
@@ -189,9 +214,14 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"{track.title} : échec ({message})", 8000)
 
     def _on_album_finished(self) -> None:
+        # Si le dossier était vide, _on_album_scan_done a déjà affiché un message
+        # explicite (progress_bar.maximum() est resté à 0, jamais mis à jour) :
+        # ne pas l'effacer aussitôt par un "terminée" générique et peu informatif.
+        had_tracks = self.progress_bar.maximum() > 0
+        self._set_busy(False)
         self.progress_bar.setVisible(False)
-        self.analyze_album_button.setEnabled(True)
-        self.status_bar.showMessage("Analyse de l'album terminée", 5000)
+        if had_tracks:
+            self.status_bar.showMessage("Analyse de l'album terminée", 5000)
 
     # --- paramètres -------------------------------------------------------
 
@@ -218,19 +248,54 @@ class MainWindow(QMainWindow):
         if not directory:
             return
 
-        exported = self.candidates_panel.export_checked(Path(directory))
+        exported = self.candidates_panel.export_checked(
+            Path(directory), file_format=self.settings.export_format
+        )
         self.status_bar.showMessage(f"{len(exported)} fichier(s) exporté(s)", 5000)
 
     # --- infrastructure -------------------------------------------------
 
-    def _run_worker(self, worker: QObject) -> None:
+    def _is_analysis_running(self) -> bool:
+        return self._thread is not None and self._thread.isRunning()
+
+    def _set_busy(self, busy: bool) -> None:
+        """Empêche de lancer une deuxième analyse pendant qu'une autre tourne déjà :
+        deux QThread simultanés sur cette fenêtre se sont déjà marché dessus en
+        pratique (voir _run_worker)."""
+        self.library_panel.setEnabled(not busy)
+        self.analyze_album_button.setEnabled(not busy and self._current_folder is not None)
+
+    def _run_worker(self, worker: TrackAnalysisWorker | AlbumAnalysisWorker) -> None:
         self._worker = worker  # évite que Python ne le détruise pendant l'exécution
         self._thread = start_in_thread(worker)
+        self._thread.finished.connect(self._on_worker_thread_finished)
         self._thread.start()
 
-    def closeEvent(self, event) -> None:  # noqa: N802 - signature imposée par Qt
+    def _on_worker_thread_finished(self) -> None:
+        # thread.finished n'est émis qu'une fois le thread réellement arrêté
+        # (exec() revenu), contrairement à worker.finished (traité par
+        # _on_track_analyzed / _on_album_finished) qui peut encore s'exécuter
+        # alors que thread.quit() n'a pas encore été traité. Relâcher la
+        # référence dès worker.finished a provoqué un vrai plantage (le
+        # thread encore vivant se faisait détruire sous nos pieds) ; ici,
+        # c'est sûr.
+        self._thread = None
+        self._worker = None
+
+    def closeEvent(self, event) -> None:
+        if isinstance(self._worker, AlbumAnalysisWorker):
+            # Demande l'arrêt après la piste en cours plutôt que de laisser tourner
+            # tout le reste de l'album pendant qu'on ferme la fenêtre.
+            self._worker.stop()
         if self._thread is not None and self._thread.isRunning():
             self._thread.quit()
-            self._thread.wait(2000)
+            # Pas de timeout court ici : le thread peut être en plein milieu d'une
+            # analyse (rythme CPU, cf. CLAUDE.md "sans GPU") qui dure largement
+            # plus de 2 s. Fermer le cache SQLite pendant qu'il l'utilise encore
+            # (voir core/cache.py) provoquerait des erreurs sur les pistes
+            # restantes. On attend donc la vraie fin, avec une limite large plutôt
+            # qu'absente pour ne pas bloquer indéfiniment sur un dossier réseau
+            # devenu injoignable en cours d'analyse.
+            self._thread.wait(30_000)
         self.cache.close()
         super().closeEvent(event)

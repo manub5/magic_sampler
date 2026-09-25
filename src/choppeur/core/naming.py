@@ -36,10 +36,7 @@ def build_filename(track: Track, candidate: Candidate, *, extension: str = "wav"
     if candidate.type is CandidateType.LOOP:
         position = _format_position(candidate.start_seconds, with_millis=False)
         bpm = round(candidate.bpm or 0)
-        return (
-            f"{artist}_{album}_{piste}_loop_{bpm}bpm_{candidate.bars}bars_"
-            f"{position}.{extension}"
-        )
+        return f"{artist}_{album}_{piste}_loop_{bpm}bpm_{candidate.bars}bars_{position}.{extension}"
 
     position = _format_position(candidate.start_seconds, with_millis=True)
     return f"{artist}_{album}_{piste}_shot_{position}.{extension}"

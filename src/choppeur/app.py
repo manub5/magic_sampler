@@ -1,5 +1,6 @@
 import os
 import sys
+from collections.abc import Mapping
 
 from PySide6.QtWidgets import QApplication
 
@@ -12,7 +13,7 @@ def build_window(settings: Settings | None = None, cache: AnalysisCache | None =
     return MainWindow(settings=settings, cache=cache)
 
 
-def default_platform_for_session(env: dict | None = None) -> str | None:
+def default_platform_for_session(env: Mapping[str, str] | None = None) -> str | None:
     """
     Certaines sessions Wayland (observé sur KDE Plasma / Kubuntu) provoquent des
     artefacts d'affichage avec des applications Qt Widgets (zones mal

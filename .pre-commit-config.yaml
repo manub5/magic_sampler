@@ -1,0 +1,39 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff (lint)
+        entry: uv run --no-sync ruff check --fix
+        language: system
+        types: [python]
+
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run --no-sync ruff format
+        language: system
+        types: [python]
+
+      - id: mypy
+        name: mypy (types)
+        entry: uv run --no-sync mypy src tests
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: bandit
+        # -ll : n'échoue que sur une sévérité moyenne ou plus. Le seul
+        # signalement actuel (B404, import de subprocess) est accepté et
+        # documenté dans docs/DECISIONS.md — pas une vraie vulnérabilité,
+        # il ne doit pas bloquer chaque commit.
+        name: bandit (sécurité)
+        entry: uv run --no-sync bandit -qc pyproject.toml -r src -ll
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: pytest
+        name: pytest (suite complète)
+        entry: uv run --no-sync pytest -q
+        language: system
+        pass_filenames: false
+        types: [python]

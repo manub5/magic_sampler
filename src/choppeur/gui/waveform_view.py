@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget
 
 from choppeur.core.models import Candidate, CandidateType
 
@@ -20,7 +21,7 @@ def _downsample(samples: np.ndarray, max_points: int) -> np.ndarray:
 class WaveformView(pg.PlotWidget):
     """Forme d'onde d'une piste, avec les marqueurs de début/fin des candidats."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMenuEnabled(False)
         self.setLabel("bottom", "Temps", units="s")
@@ -28,9 +29,7 @@ class WaveformView(pg.PlotWidget):
         self._waveform_item: pg.PlotDataItem | None = None
         self._marker_lines: list[pg.InfiniteLine] = []
 
-    def set_waveform(
-        self, samples: np.ndarray, sample_rate: int, *, max_points: int = 20_000
-    ) -> None:
+    def set_waveform(self, samples: np.ndarray, sample_rate: int, *, max_points: int = 20_000) -> None:
         self.clear()
         self._marker_lines = []
 

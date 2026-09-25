@@ -1,21 +1,22 @@
+from dataclasses import replace
 from pathlib import Path
 
 from choppeur.core.models import Candidate, CandidateType, Track
 from choppeur.core.naming import build_filename, unique_path
 
+_DEFAULT_TRACK = Track(
+    path=Path("/library/Burial/Untrue/03 - Etched Headplate.mp3"),
+    artist="Burial",
+    album="Untrue",
+    title="Etched Headplate",
+    track_number=3,
+    duration_seconds=240.0,
+    sample_rate=44100,
+)
+
 
 def _track(**overrides) -> Track:
-    defaults = dict(
-        path=Path("/library/Burial/Untrue/03 - Etched Headplate.mp3"),
-        artist="Burial",
-        album="Untrue",
-        title="Etched Headplate",
-        track_number=3,
-        duration_seconds=240.0,
-        sample_rate=44100,
-    )
-    defaults.update(overrides)
-    return Track(**defaults)
+    return replace(_DEFAULT_TRACK, **overrides)
 
 
 def test_loop_filename_matches_spec_example():
@@ -44,13 +45,44 @@ def test_one_shot_filename_matches_spec_example():
 
 def test_forbidden_characters_are_cleaned():
     track = _track(artist="AC/DC", album='Live: "1992"')
-    candidate = Candidate(
-        type=CandidateType.ONE_SHOT, start_seconds=0.0, end_seconds=0.5, score=0.5
-    )
+    candidate = Candidate(type=CandidateType.ONE_SHOT, start_seconds=0.0, end_seconds=0.5, score=0.5)
     name = build_filename(track, candidate)
     assert "/" not in name
     assert '"' not in name
     assert ":" not in name
+
+
+def test_unicode_characters_are_preserved_not_mangled():
+    track = _track(artist="Björk", album="東京の夜 🎵", title="Jóga")
+    candidate = Candidate(type=CandidateType.ONE_SHOT, start_seconds=0.0, end_seconds=0.5, score=0.5)
+
+    name = build_filename(track, candidate, extension="wav")
+
+    assert "Björk" in name
+    assert "東京の夜 🎵" in name
+
+
+def test_sanitize_falls_back_to_placeholder_for_blank_names():
+    track = _track(artist="   ", album="Untrue")  # espaces uniquement : vide après nettoyage
+    candidate = Candidate(type=CandidateType.ONE_SHOT, start_seconds=0.0, end_seconds=0.5, score=0.5)
+
+    name = build_filename(track, candidate)
+
+    assert "sans_nom" in name
+    assert "  " not in name
+
+
+def test_unicode_filename_can_actually_be_written_to_disk(tmp_path):
+    """Le nom de fichier construit doit être utilisable tel quel par le
+    système de fichiers, pas seulement correct en tant que chaîne."""
+    track = _track(artist="Sigur Rós", album="Ágætis byrjun", track_number=None, title="Svefn-g-englar")
+    candidate = Candidate(type=CandidateType.ONE_SHOT, start_seconds=0.0, end_seconds=0.5, score=0.5)
+
+    name = build_filename(track, candidate)
+    path = tmp_path / name
+    path.write_bytes(b"contenu")
+
+    assert path.read_bytes() == b"contenu"
 
 
 def test_unique_path_avoids_overwrite(tmp_path):

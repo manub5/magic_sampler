@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PySide6.QtWidgets import QTreeWidgetItem
+
 from choppeur.gui.library_panel import LibraryPanel
 
 _LOADING_PLACEHOLDER = "…"
@@ -16,12 +18,13 @@ def _make_library(root: Path) -> None:
     (album_b / "01 - Other.mp3").write_bytes(b"")
 
 
-def _find_top_level(panel: LibraryPanel, name: str):
-    return next(
-        panel.topLevelItem(i)
-        for i in range(panel.topLevelItemCount())
-        if panel.topLevelItem(i).text(0) == name
-    )
+def _find_top_level(panel: LibraryPanel, name: str) -> QTreeWidgetItem:
+    for i in range(panel.topLevelItemCount()):
+        item = panel.topLevelItem(i)
+        assert item is not None
+        if item.text(0) == name:
+            return item
+    raise AssertionError(f"Aucun élément de premier niveau nommé {name!r}")
 
 
 def test_set_root_lists_top_level_folders_without_descending(qapp, tmp_path):
@@ -49,9 +52,7 @@ def test_expanding_a_folder_loads_its_audio_files_only(qapp, tmp_path):
 
     panel.expandItem(album_a_item)
 
-    child_names = sorted(
-        album_a_item.child(i).text(0) for i in range(album_a_item.childCount())
-    )
+    child_names = sorted(album_a_item.child(i).text(0) for i in range(album_a_item.childCount()))
     assert child_names == ["01 - Track One.wav"]
 
 
@@ -128,3 +129,31 @@ def test_a_broken_symlink_does_not_break_the_rest_of_the_listing(qapp, tmp_path)
 
     names = [album_item.child(i).text(0) for i in range(album_item.childCount())]
     assert names == ["01 - Good.wav"]
+
+
+def test_a_folder_with_thousands_of_tracks_expands_without_hanging(qapp, tmp_path):
+    """
+    Le chargement était auparavant récursif dès set_root() : sur une grosse
+    collection (un dossier "Various Artists" ou un import en vrac), ça
+    pouvait geler l'interface d'attente longtemps, surtout avec la latence
+    d'un NAS. Le chargement paresseux (un seul niveau à la fois) doit rester
+    rapide même avec beaucoup de fichiers dans UN SEUL dossier.
+    """
+    import time
+
+    album = tmp_path / "BigCompilation"
+    album.mkdir()
+    n_tracks = 3000
+    for i in range(n_tracks):
+        (album / f"{i:04d} - Track.wav").write_bytes(b"")
+
+    panel = LibraryPanel()
+
+    start = time.monotonic()
+    panel.set_root(tmp_path)
+    album_item = _find_top_level(panel, "BigCompilation")
+    panel.expandItem(album_item)
+    elapsed = time.monotonic() - start
+
+    assert album_item.childCount() == n_tracks
+    assert elapsed < 10.0, f"trop lent ({elapsed:.1f}s) : régression de performance probable"

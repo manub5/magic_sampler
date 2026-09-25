@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QWidget
 
 from choppeur.core.audio_io import AUDIO_EXTENSIONS
 
@@ -24,7 +24,7 @@ class LibraryPanel(QTreeWidget):
     folder_selected = Signal(Path)
     load_failed = Signal(Path, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.itemSelectionChanged.connect(self._on_selection_changed)
@@ -68,8 +68,11 @@ class LibraryPanel(QTreeWidget):
                     item.setData(0, _PATH_ROLE, entry)
 
     def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
-        if item.childCount() != 1 or item.child(0).text(0) != _LOADING_PLACEHOLDER:
-            return  # déjà chargé, ou dossier vide
+        if item.childCount() != 1:
+            return  # déjà chargé (plusieurs enfants réels), ou dossier vide
+        placeholder = item.child(0)
+        if placeholder is None or placeholder.text(0) != _LOADING_PLACEHOLDER:
+            return
         item.takeChild(0)
         folder: Path | None = item.data(0, _PATH_ROLE)
         if folder is not None:

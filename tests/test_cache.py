@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -57,6 +58,37 @@ def test_cache_miss_after_file_changes(tmp_path):
         os.utime(audio_path, None)
 
         assert cache.get(track) is None
+
+
+def test_cache_usable_from_a_different_thread_than_the_one_that_created_it(tmp_path):
+    """
+    Reproduit le bug réel de l'appli : le cache est créé dans le thread
+    principal (MainWindow) mais interrogé/écrit depuis le QThread d'analyse.
+    sqlite3 refuse ça par défaut (check_same_thread=True) et lève
+    ProgrammingError — d'où check_same_thread=False + verrou dans
+    AnalysisCache.
+    """
+    audio_path = tmp_path / "track.wav"
+    audio_path.write_bytes(b"\x00" * 100)
+    track = _track(audio_path)
+    cache = AnalysisCache(tmp_path / "cache.sqlite")
+
+    errors: list[Exception] = []
+
+    def worker() -> None:
+        try:
+            cache.set(_analysis(track))
+            cache.get(track)
+        except Exception as exc:  # noqa: BLE001 - on veut capturer n'importe quelle erreur du thread
+            errors.append(exc)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert errors == []
+    assert cache.get(track) == _analysis(track)
+    cache.close()
 
 
 def test_cache_persists_across_instances(tmp_path):

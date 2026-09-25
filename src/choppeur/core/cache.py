@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
+from typing import Self
 
 from choppeur.core.models import Analysis, Track
 
@@ -33,14 +35,25 @@ class AnalysisCache:
 
     def __init__(self, database_path: Path):
         database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(database_path)
-        self._connection.execute(_SCHEMA)
-        self._connection.commit()
+        # check_same_thread=False : le cache est créé dans le thread principal
+        # (MainWindow) mais interrogé depuis le QThread d'analyse
+        # (TrackAnalysisWorker/AlbumAnalysisWorker) — sqlite3 refuse ça par
+        # défaut ("SQLite objects created in a thread can only be used in
+        # that same thread"). Un seul thread d'analyse tourne à la fois dans
+        # cette appli, mais le verrou ci-dessous protège quand même contre un
+        # accès concurrent (ex. l'interface qui lirait le cache pendant
+        # qu'une analyse en arrière-plan écrit).
+        self._connection = sqlite3.connect(database_path, check_same_thread=False)
+        self._lock = threading.Lock()
+        with self._lock:
+            self._connection.execute(_SCHEMA)
+            self._connection.commit()
 
     def close(self) -> None:
-        self._connection.close()
+        with self._lock:
+            self._connection.close()
 
-    def __enter__(self) -> "AnalysisCache":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -48,11 +61,12 @@ class AnalysisCache:
 
     def get(self, track: Track) -> Analysis | None:
         size, mtime = _fingerprint(track.path)
-        row = self._connection.execute(
-            "SELECT tempo_bpm, beat_times, downbeat_times, onset_times "
-            "FROM analyses WHERE path = ? AND size = ? AND mtime = ?",
-            (str(track.path), size, mtime),
-        ).fetchone()
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT tempo_bpm, beat_times, downbeat_times, onset_times "
+                "FROM analyses WHERE path = ? AND size = ? AND mtime = ?",
+                (str(track.path), size, mtime),
+            ).fetchone()
         if row is None:
             return None
         tempo_bpm, beat_times_json, downbeat_times_json, onset_times_json = row
@@ -66,18 +80,19 @@ class AnalysisCache:
 
     def set(self, analysis: Analysis) -> None:
         size, mtime = _fingerprint(analysis.track.path)
-        self._connection.execute(
-            "INSERT OR REPLACE INTO analyses "
-            "(path, size, mtime, tempo_bpm, beat_times, downbeat_times, onset_times) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                str(analysis.track.path),
-                size,
-                mtime,
-                analysis.tempo_bpm,
-                json.dumps(analysis.beat_times),
-                json.dumps(analysis.downbeat_times),
-                json.dumps(analysis.onset_times),
-            ),
-        )
-        self._connection.commit()
+        with self._lock:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO analyses "
+                "(path, size, mtime, tempo_bpm, beat_times, downbeat_times, onset_times) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(analysis.track.path),
+                    size,
+                    mtime,
+                    analysis.tempo_bpm,
+                    json.dumps(analysis.beat_times),
+                    json.dumps(analysis.downbeat_times),
+                    json.dumps(analysis.onset_times),
+                ),
+            )
+            self._connection.commit()

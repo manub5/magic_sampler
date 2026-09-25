@@ -14,9 +14,7 @@ def test_default_platform_prefers_xcb_on_wayland_without_explicit_choice():
 
 
 def test_default_platform_does_not_override_explicit_choice():
-    assert default_platform_for_session(
-        {"XDG_SESSION_TYPE": "wayland", "QT_QPA_PLATFORM": "wayland"}
-    ) is None
+    assert default_platform_for_session({"XDG_SESSION_TYPE": "wayland", "QT_QPA_PLATFORM": "wayland"}) is None
 
 
 def test_default_platform_leaves_x11_sessions_untouched():

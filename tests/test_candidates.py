@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 
 from choppeur.core import candidates
@@ -16,7 +18,10 @@ def test_find_loop_candidates_respects_bar_alignment_and_duration():
     downbeat_times = (0.0, 2.0, 4.0, 6.0, 8.0)  # 120 BPM, 4 temps/mesure -> 2s/mesure
 
     result = candidates.find_loop_candidates(
-        signal, SAMPLE_RATE, tempo_bpm=120.0, downbeat_times=downbeat_times,
+        signal,
+        SAMPLE_RATE,
+        tempo_bpm=120.0,
+        downbeat_times=downbeat_times,
         lengths_bars=(1, 2),
     )
 
@@ -55,9 +60,7 @@ def _click_track(n_clicks=4, interval_seconds=0.5, sample_rate=SAMPLE_RATE):
 def test_find_one_shot_candidates_one_per_onset_with_short_duration():
     signal, onset_times = _click_track(n_clicks=4, interval_seconds=0.5)
 
-    result = candidates.find_one_shot_candidates(
-        signal, SAMPLE_RATE, onset_times, max_duration_seconds=0.4
-    )
+    result = candidates.find_one_shot_candidates(signal, SAMPLE_RATE, onset_times, max_duration_seconds=0.4)
 
     assert len(result) == len(onset_times)
     for candidate in result:
@@ -68,3 +71,29 @@ def test_find_one_shot_candidates_one_per_onset_with_short_duration():
 
     scores = [c.score for c in result]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_find_loop_candidates_stays_fast_on_a_very_long_track():
+    """
+    Un vrai bug de performance trouvé en revue de code : la recherche des
+    downbeats dans la zone d'un candidat (régularité du tempo) refiltrait
+    tout le tableau à chaque candidat, et le RMS global du morceau était
+    recalculé à chaque candidat aussi (au lieu d'une fois). Sur un morceau
+    de plusieurs heures (~1000 mesures ici, un DJ set en ferait bien plus),
+    c'était quadratique : plusieurs dizaines de secondes à plusieurs minutes
+    selon la taille. Après correctif (bisect + RMS global calculé une fois),
+    ça reste de l'ordre de la seconde.
+    """
+    n_downbeats = 1000  # ~33 minutes à 120 BPM, mesures de 4 temps
+    downbeat_times = tuple(2.0 * i for i in range(n_downbeats))
+    duration_seconds = n_downbeats * 2.0 + 20
+    samples = np.zeros(int(duration_seconds * SAMPLE_RATE), dtype=np.float32)
+
+    start = time.monotonic()
+    result = candidates.find_loop_candidates(
+        samples, SAMPLE_RATE, 120.0, downbeat_times, lengths_bars=(1, 2, 4, 8)
+    )
+    elapsed = time.monotonic() - start
+
+    assert len(result) > 0
+    assert elapsed < 10.0, f"trop lent ({elapsed:.1f}s) : régression de performance probable"

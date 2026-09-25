@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
+
 import numpy as np
 
 from choppeur.core.models import Candidate, CandidateType
@@ -21,9 +23,19 @@ def _bar_duration(downbeat_times: tuple[float, ...]) -> float | None:
     return float(np.median(np.diff(downbeat_times)))
 
 
-def _regularity_score(downbeat_times: tuple[float, ...], start: float, end: float) -> float:
-    """1.0 = tempo parfaitement régulier sur la zone, 0.0 = très irrégulier."""
-    in_range = [t for t in downbeat_times if start <= t <= end]
+def _regularity_score(downbeat_times: np.ndarray, start: float, end: float) -> float:
+    """1.0 = tempo parfaitement régulier sur la zone, 0.0 = très irrégulier.
+
+    `downbeat_times` doit être trié (c'est le cas : beat_this les renvoie dans
+    l'ordre chronologique). On y trouve la zone [start, end] par recherche
+    dichotomique (bisect) plutôt qu'en filtrant tout le tableau à chaque appel :
+    sur un morceau de plusieurs heures (des milliers de premiers temps de
+    mesure), un filtre linéaire répété pour chaque candidat rendait l'analyse
+    quadratique - plusieurs minutes au lieu de quelques secondes.
+    """
+    lo = bisect_left(downbeat_times, start)
+    hi = bisect_right(downbeat_times, end)
+    in_range = downbeat_times[lo:hi]
     if len(in_range) < 3:
         return 0.5  # pas assez de mesures dans la zone pour juger : score neutre
     intervals = np.diff(in_range)
@@ -34,13 +46,19 @@ def _regularity_score(downbeat_times: tuple[float, ...], start: float, end: floa
     return float(np.clip(1.0 - coefficient_of_variation, 0.0, 1.0))
 
 
-def _cut_smoothness_score(samples: np.ndarray, sample_rate: int, end_seconds: float) -> float:
-    """Score haut si le niveau juste avant la coupure est faible (pas de coupure brutale)."""
+def _cut_smoothness_score(
+    samples: np.ndarray, sample_rate: int, end_seconds: float, overall_rms: float
+) -> float:
+    """Score haut si le niveau juste avant la coupure est faible (pas de coupure brutale).
+
+    `overall_rms` est calculé une seule fois par l'appelant (pas ici) : le
+    recalculer pour chaque candidat coûtait un parcours complet du signal à
+    chaque fois, ce qui devenait très lent sur un morceau de plusieurs heures.
+    """
     window = int(0.03 * sample_rate)  # 30 ms
     end_index = round(end_seconds * sample_rate)
     start_index = max(0, end_index - window)
     tail_rms = _rms(samples[start_index:end_index])
-    overall_rms = _rms(samples) or 1e-9
     ratio = tail_rms / overall_rms
     return float(np.clip(1.0 - ratio, 0.0, 1.0))
 
@@ -61,6 +79,7 @@ def find_loop_candidates(
 
     duration_seconds = len(samples) / sample_rate
     overall_rms = _rms(samples) or 1e-9
+    downbeat_array = np.asarray(downbeat_times, dtype=np.float64)
     candidates: list[Candidate] = []
 
     for bars in lengths_bars:
@@ -74,9 +93,9 @@ def find_loop_candidates(
             end_index = round(end * sample_rate)
             segment = samples[start_index:end_index]
 
-            regularity = _regularity_score(downbeat_times, start, end)
+            regularity = _regularity_score(downbeat_array, start, end)
             energy_score = float(np.clip(_rms(segment) / overall_rms, 0.0, 1.0))
-            smoothness = _cut_smoothness_score(samples, sample_rate, end)
+            smoothness = _cut_smoothness_score(samples, sample_rate, end, overall_rms)
             score = 0.5 * regularity + 0.3 * energy_score + 0.2 * smoothness
 
             candidates.append(

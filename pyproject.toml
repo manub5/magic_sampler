@@ -24,7 +24,7 @@ dependencies = [
 choppeur = "choppeur.app:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.16", "mypy>=1.14", "bandit>=1.9", "pre-commit>=4"]
 
 [build-system]
 requires = ["hatchling"]
@@ -44,3 +44,24 @@ torchaudio = [{ index = "pytorch-cpu" }]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "BLE", "C4", "SIM", "RUF", "PLW", "PYI"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# Bibliothèques sans annotations de type ni marqueur py.typed : on ne peut
+# pas vérifier leur usage précisément, mais ça ne doit pas bloquer le reste.
+module = ["pyqtgraph.*", "soundfile.*", "sounddevice.*", "beat_this.*"]
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

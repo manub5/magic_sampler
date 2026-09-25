@@ -117,7 +117,7 @@ class CandidatesPanel(QWidget):
         loop = candidate.type is CandidateType.LOOP
         try:
             sd.play(segment, self._sample_rate, loop=loop)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - toute erreur PortAudio doit remonter à l'UI
             # Erreur PortAudio la plus fréquente en pratique : aucun périphérique de
             # sortie par défaut disponible/configuré. On la remonte au lieu de la
             # laisser disparaître silencieusement (Qt avale les exceptions des slots).
@@ -126,15 +126,23 @@ class CandidatesPanel(QWidget):
     def stop_preview(self) -> None:
         try:
             sd.stop()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - idem : ne jamais avaler silencieusement
             self.preview_failed.emit(f"Échec de l'arrêt de la préécoute : {exc}")
 
     def _on_export_clicked(self) -> None:
         self.export_requested.emit(self.checked_candidates())
 
-    def export_checked(self, destination: Path) -> list[Path]:
+    def export_checked(
+        self, destination: Path, *, file_format: str = "wav", subtype: str = "PCM_24"
+    ) -> list[Path]:
         if self._samples is None or self._track is None:
             return []
         return audio_io.export_candidates(
-            self._samples, self._sample_rate, self._track, self.checked_candidates(), destination
+            self._samples,
+            self._sample_rate,
+            self._track,
+            self.checked_candidates(),
+            destination,
+            file_format=file_format,
+            subtype=subtype,
         )
