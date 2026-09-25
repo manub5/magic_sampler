@@ -61,3 +61,58 @@
   compatibilité GPU/CPU selon la machine cible) ; le choix concret de l'outil
   dépend de la machine de la personne à qui le logiciel sera prêté, donc
   reporté comme prévu par la ROADMAP plutôt que décidé arbitrairement ici.
+
+## Corrections suite au premier essai réel (Kubuntu 24.04, KDE Plasma)
+
+### Bibliothèque : chargement dossier par dossier, pas tout l'arbre d'un coup
+- Bug : `LibraryPanel` parcourait toute l'arborescence récursivement dès
+  `set_root()`. Sur un NAS/dossier réseau (latence par accès, parfois des
+  milliers de fichiers), ça pouvait geler l'interface durablement, voire
+  tourner indéfiniment sur un lien symbolique circulaire — perçu comme
+  "impossible à charger".
+- Correctif : un seul niveau chargé à la fois ; un dossier reçoit un enfant
+  provisoire ("…") et n'est réellement lu qu'à son ouverture (signal
+  `itemExpanded`). Une entrée illisible (lien cassé, droit réseau refusé) est
+  ignorée individuellement au lieu d'interrompre tout le dossier. Si le
+  dossier racine choisi est lui-même illisible, `load_failed` est émis et
+  affiché dans la barre de statut plutôt que de laisser un panneau vide sans
+  explication.
+- Incertitude restante : un partage réseau exposé uniquement via un
+  protocole KIO de Dolphin (`smb://…`) sans montage FUSE/gvfs réel ne
+  correspond à aucun chemin de fichier local ; un tel chemin choisi dans la
+  boîte de dialogue resterait illisible pour Python. À vérifier : le dossier
+  doit être monté (Dolphin propose en général de le monter automatiquement
+  via gvfs, ce qui le rend accessible comme un dossier normal).
+
+### Préécoute : erreurs remontées au lieu d'être avalées silencieusement
+- Bug : une exception de `sounddevice` (ex. aucun périphérique de sortie
+  disponible/configuré) était avalée silencieusement par Qt (les exceptions
+  dans un slot ne remontent pas) : cliquer sur "Préécouter" ne faisait
+  simplement rien, sans indice sur la cause.
+- Correctif : `sd.play`/`sd.stop` sont maintenant protégés ; toute erreur est
+  émise via le signal `preview_failed` et affichée dans la barre de statut.
+  Cocher un candidat sans avoir cliqué dessus (sélection Qt "courante" non
+  positionnée) est aussi couvert : la préécoute retombe sur le premier
+  candidat coché s'il n'y a pas de ligne sélectionnée.
+- Incertitude : non testable dans cet environnement de développement (aucun
+  périphérique audio dans ce bac à sable — `sounddevice.query_devices()` y
+  est vide). Le prochain clic sur "Préécouter" chez toi affichera le message
+  d'erreur exact de PortAudio dans la barre de statut si ça échoue encore ;
+  ce message précisera la vraie cause.
+
+### Artefacts d'affichage ("zébrures") en session Wayland
+- Sur KDE Plasma/Kubuntu, certaines applications Qt Widgets ont des bugs de
+  rafraîchissement connus en session Wayland native (zones mal repeintes).
+  `app.py` force maintenant XCB (X11 via XWayland) par défaut quand
+  `XDG_SESSION_TYPE=wayland` et qu'aucun `QT_QPA_PLATFORM` n'est déjà choisi
+  explicitement — XCB est le chemin le plus éprouvé pour PySide6 côté
+  widgets.
+- Incertitude : non vérifiable ici (pas d'affichage réel dans ce bac à
+  sable). Si des zébrures persistent malgré XCB, ou si XCB pose un autre
+  problème (affichage flou en cas d'écran haute résolution, par exemple),
+  fixer explicitement `QT_QPA_PLATFORM=wayland` (ou une autre valeur) avant
+  `uv run choppeur` annule ce choix automatique.
+- Le fait que l'ancien chargement récursif de la bibliothèque provoquait
+  aussi énormément de mises à jour de widgets d'un coup a pu aggraver ou
+  causer ces artefacts ; le correctif de chargement paresseux ci-dessus
+  devrait déjà réduire le phénomène indépendamment du choix XCB/Wayland.
