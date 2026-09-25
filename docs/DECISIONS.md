@@ -26,3 +26,24 @@
 ## uv pour l'environnement Python
 - Un seul fichier `pyproject.toml` + verrou `uv.lock` : installation
   identique chez une autre personne.
+
+## Installation de beat_this depuis PyPI, pas depuis l'archive GitHub
+- Le paquet `beat-this` (même code, mêmes auteurs CPJKU) est aussi publié sur
+  PyPI depuis la version 1.1.0, en plus de l'installation `pip install
+  https://github.com/CPJKU/beat_this/archive/main.zip` documentée dans leur
+  README. Les deux installent le même module `beat_this`.
+- On utilise la version PyPI (`beat-this>=1.1.0`) : plus stable (numéro de
+  version figé, pas "main" qui peut changer), et n'exige pas d'accès à
+  `github.com` au moment de l'installation.
+- Les poids du modèle, eux, se téléchargent automatiquement au premier lancement
+  depuis le cloud de la JKU (`cloud.cp.jku.at`), pas depuis GitHub.
+
+## Roues CPU de PyTorch par défaut
+- `torch`/`torchaudio` installés depuis l'index CPU officiel
+  (`download.pytorch.org/whl/cpu`, voir `[tool.uv.index]` dans
+  `pyproject.toml`) plutôt que les roues par défaut de PyPI, qui embarquent
+  ~2,5 Go de bibliothèques CUDA même sans GPU NVIDIA.
+- Le logiciel reste utilisable sans GPU (voir portabilité dans CLAUDE.md).
+  Sur une machine avec GPU NVIDIA, réinstaller `torch`/`torchaudio` avec les
+  roues CUDA correspondantes (voir pytorch.org/get-started/locally) pour
+  accélérer l'analyse.

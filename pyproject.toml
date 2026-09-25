@@ -13,10 +13,11 @@ dependencies = [
     "platformdirs>=4",
     "tomli-w>=1.0",
     "torch>=2.0",
+    "torchaudio>=2.0",
     "einops",
     "soxr",
     "rotary-embedding-torch",
-    "beat_this @ https://github.com/CPJKU/beat_this/archive/main.zip",
+    "beat-this>=1.1.0",
 ]
 
 [project.scripts]
@@ -34,3 +35,12 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/choppeur"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchaudio = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
