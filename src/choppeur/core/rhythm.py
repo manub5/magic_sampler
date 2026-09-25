@@ -14,6 +14,13 @@ def default_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def resolve_device(gpu_mode: str) -> str:
+    """Applique le réglage utilisateur ("auto" ou "cpu", voir core/settings.py)."""
+    if gpu_mode == "cpu":
+        return "cpu"
+    return default_device()
+
+
 def _get_tracker(checkpoint: str, device: str) -> File2Beats:
     key = (checkpoint, device)
     if key not in _trackers:
