@@ -7,6 +7,7 @@ import pytest
 import soundfile as sf
 
 from choppeur.core import audio_io
+from choppeur.core.models import Candidate, CandidateType, Track
 
 SAMPLE_RATE = 44100
 
@@ -48,6 +49,35 @@ def test_export_segment_writes_expected_duration(tmp_path):
     written, sample_rate = sf.read(str(destination))
     assert sample_rate == SAMPLE_RATE
     assert len(written) == SAMPLE_RATE  # 1 seconde
+
+
+def test_export_candidates_writes_named_files_without_overwrite(tmp_path):
+    samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
+    track = Track(
+        path=tmp_path / "source.wav",
+        artist="Burial",
+        album="Untrue",
+        title="Etched Headplate",
+        track_number=3,
+        duration_seconds=3.0,
+        sample_rate=SAMPLE_RATE,
+    )
+    loop = Candidate(
+        type=CandidateType.LOOP, start_seconds=0.0, end_seconds=1.0, score=1.0, bpm=120, bars=1
+    )
+    shot = Candidate(type=CandidateType.ONE_SHOT, start_seconds=1.0, end_seconds=1.2, score=0.5)
+    destination = tmp_path / "export"
+
+    paths = audio_io.export_candidates(samples, SAMPLE_RATE, track, [loop, shot], destination)
+
+    assert len(paths) == 2
+    assert all(p.exists() for p in paths)
+    assert paths[0].name == "Burial_Untrue_03_loop_120bpm_1bars_00m00s.wav"
+    assert paths[1].name == "Burial_Untrue_03_shot_00m01s000.wav"
+
+    # Un second export ne doit jamais écraser les fichiers déjà exportés
+    more_paths = audio_io.export_candidates(samples, SAMPLE_RATE, track, [loop], destination)
+    assert more_paths[0].name == "Burial_Untrue_03_loop_120bpm_1bars_00m00s_2.wav"
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg non installé")

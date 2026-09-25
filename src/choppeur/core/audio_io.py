@@ -8,6 +8,9 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from choppeur.core.models import Candidate, Track
+from choppeur.core.naming import build_filename, unique_path
+
 _NATIVE_EXTENSIONS = {".wav", ".flac", ".ogg", ".aiff", ".aif"}
 
 
@@ -60,3 +63,25 @@ def export_segment(
     segment = samples[start_index:end_index]
     destination.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(destination), segment, sample_rate, subtype=subtype)
+
+
+def export_candidates(
+    samples: np.ndarray,
+    sample_rate: int,
+    track: Track,
+    candidates: list[Candidate],
+    destination: Path,
+    *,
+    file_format: str = "wav",
+    subtype: str = "PCM_24",
+) -> list[Path]:
+    """Exporte chaque candidat sous un nom automatique, sans jamais écraser un fichier existant."""
+    exported_paths = []
+    for candidate in candidates:
+        filename = build_filename(track, candidate, extension=file_format)
+        path = unique_path(destination, filename)
+        export_segment(
+            samples, sample_rate, candidate.start_seconds, candidate.end_seconds, path, subtype=subtype
+        )
+        exported_paths.append(path)
+    return exported_paths
