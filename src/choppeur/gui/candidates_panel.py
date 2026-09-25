@@ -31,6 +31,7 @@ class CandidatesPanel(QWidget):
     """Liste des candidats d'une piste : cocher, préécouter (boucle répétée), exporter."""
 
     export_requested = Signal(list)
+    preview_failed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -86,27 +87,47 @@ class CandidatesPanel(QWidget):
         ]
 
     def _selected_candidate(self) -> Candidate | None:
+        """Le candidat sur la ligne courante, ou à défaut le premier coché
+        (cocher une case ne place pas toujours la ligne "courante" au sens Qt)."""
         row = self._list.currentRow()
-        if row < 0 or row >= len(self._candidates):
-            return None
-        return self._candidates[row]
+        if 0 <= row < len(self._candidates):
+            return self._candidates[row]
+        checked = self.checked_candidates()
+        return checked[0] if checked else None
 
     def _on_preview_clicked(self) -> None:
         candidate = self._selected_candidate()
-        if candidate is not None:
-            self.preview(candidate)
+        if candidate is None:
+            self.preview_failed.emit("Sélectionnez ou cochez un candidat à préécouter.")
+            return
+        self.preview(candidate)
 
     def preview(self, candidate: Candidate) -> None:
         if self._samples is None:
+            self.preview_failed.emit("Aucune piste chargée.")
             return
-        start = round(candidate.start_seconds * self._sample_rate)
-        end = round(candidate.end_seconds * self._sample_rate)
+
+        start = max(0, round(candidate.start_seconds * self._sample_rate))
+        end = min(len(self._samples), round(candidate.end_seconds * self._sample_rate))
         segment = self._samples[start:end]
+        if len(segment) == 0:
+            self.preview_failed.emit("Ce candidat est vide (durée nulle).")
+            return
+
         loop = candidate.type is CandidateType.LOOP
-        sd.play(segment, self._sample_rate, loop=loop)
+        try:
+            sd.play(segment, self._sample_rate, loop=loop)
+        except Exception as exc:
+            # Erreur PortAudio la plus fréquente en pratique : aucun périphérique de
+            # sortie par défaut disponible/configuré. On la remonte au lieu de la
+            # laisser disparaître silencieusement (Qt avale les exceptions des slots).
+            self.preview_failed.emit(f"Échec de la préécoute : {exc}")
 
     def stop_preview(self) -> None:
-        sd.stop()
+        try:
+            sd.stop()
+        except Exception as exc:
+            self.preview_failed.emit(f"Échec de l'arrêt de la préécoute : {exc}")
 
     def _on_export_clicked(self) -> None:
         self.export_requested.emit(self.checked_candidates())

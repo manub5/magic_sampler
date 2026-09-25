@@ -99,6 +99,73 @@ def test_stop_preview_calls_sounddevice_stop(qapp, monkeypatch):
     assert calls == [True]
 
 
+def test_preview_click_falls_back_to_checked_item_without_selection(qapp, tmp_path, monkeypatch):
+    panel = CandidatesPanel()
+    samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
+    candidates = _candidates()
+    panel.set_candidates(samples, SAMPLE_RATE, _track(tmp_path), candidates)
+    panel._list.setCurrentRow(-1)  # aucune ligne "courante" au sens Qt
+    panel._list.item(1).setCheckState(Qt.CheckState.Checked)
+
+    calls = []
+    monkeypatch.setattr(
+        "choppeur.gui.candidates_panel.sd.play",
+        lambda data, sample_rate, loop: calls.append(loop),
+    )
+
+    panel._on_preview_clicked()
+
+    assert calls == [False]  # candidats[1] est un one-shot
+
+
+def test_preview_click_reports_failure_without_selection_or_check(qapp, tmp_path):
+    panel = CandidatesPanel()
+    samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
+    panel.set_candidates(samples, SAMPLE_RATE, _track(tmp_path), _candidates())
+    panel._list.setCurrentRow(-1)
+
+    received = []
+    panel.preview_failed.connect(received.append)
+
+    panel._on_preview_clicked()
+
+    assert len(received) == 1
+
+
+def test_preview_emits_preview_failed_when_sounddevice_raises(qapp, tmp_path, monkeypatch):
+    panel = CandidatesPanel()
+    samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
+    candidates = _candidates()
+    panel.set_candidates(samples, SAMPLE_RATE, _track(tmp_path), candidates)
+
+    def _boom(data, sample_rate, loop):
+        raise RuntimeError("aucun périphérique de sortie")
+
+    monkeypatch.setattr("choppeur.gui.candidates_panel.sd.play", _boom)
+
+    received = []
+    panel.preview_failed.connect(received.append)
+    panel.preview(candidates[0])
+
+    assert len(received) == 1
+    assert "aucun périphérique de sortie" in received[0]
+
+
+def test_stop_preview_emits_preview_failed_when_sounddevice_raises(qapp, monkeypatch):
+    panel = CandidatesPanel()
+
+    def _boom():
+        raise RuntimeError("erreur PortAudio")
+
+    monkeypatch.setattr("choppeur.gui.candidates_panel.sd.stop", _boom)
+
+    received = []
+    panel.preview_failed.connect(received.append)
+    panel.stop_preview()
+
+    assert len(received) == 1
+
+
 def test_export_checked_writes_only_checked_candidates(qapp, tmp_path):
     panel = CandidatesPanel()
     samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
