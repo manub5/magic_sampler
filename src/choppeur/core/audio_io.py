@@ -7,11 +7,16 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+from mutagen import File as MutagenFile
 
 from choppeur.core.models import Candidate, Track
 from choppeur.core.naming import build_filename, unique_path
 
 _NATIVE_EXTENSIONS = {".wav", ".flac", ".ogg", ".aiff", ".aif"}
+
+# Extensions reconnues comme pistes audio dans la bibliothèque (lues nativement
+# ou via ffmpeg, voir _load_via_ffmpeg).
+AUDIO_EXTENSIONS = _NATIVE_EXTENSIONS | {".mp3", ".m4a", ".aac"}
 
 
 class AudioLoadError(RuntimeError):
@@ -47,6 +52,37 @@ def _load_via_ffmpeg(path: Path) -> tuple[np.ndarray, int]:
         if result.returncode != 0:
             raise AudioLoadError(f"Échec du décodage de {path} : {result.stderr.strip()}")
         return sf.read(str(wav_path), always_2d=False, dtype="float32")
+
+
+def read_track(path: Path) -> Track:
+    """Lit les tags (artiste, album, titre, piste) et les métadonnées audio, sans jamais
+    modifier le fichier source."""
+    tags = MutagenFile(str(path), easy=True)
+    audio_info = tags.info if tags is not None else None
+
+    def _tag(key: str) -> str | None:
+        if tags is None:
+            return None
+        values = tags.get(key)
+        return values[0] if values else None
+
+    track_number = None
+    raw_track_number = _tag("tracknumber")
+    if raw_track_number:
+        try:
+            track_number = int(str(raw_track_number).split("/")[0])
+        except ValueError:
+            track_number = None
+
+    return Track(
+        path=path,
+        artist=_tag("artist") or "Inconnu",
+        album=_tag("album") or "Inconnu",
+        title=_tag("title") or path.stem,
+        track_number=track_number,
+        duration_seconds=float(audio_info.length) if audio_info is not None else 0.0,
+        sample_rate=int(getattr(audio_info, "sample_rate", 0) or 0) if audio_info is not None else 0,
+    )
 
 
 def export_segment(

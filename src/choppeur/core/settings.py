@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import tomli_w
-from platformdirs import user_config_dir
+from platformdirs import user_cache_dir, user_config_dir
 
 APP_NAME = "choppeur"
 _DEFAULT_LOOP_LENGTHS_BARS = (1, 2, 4, 8)
@@ -35,6 +35,10 @@ class Settings:
 
 def default_settings_path() -> Path:
     return Path(user_config_dir(APP_NAME)) / "settings.toml"
+
+
+def default_cache_path() -> Path:
+    return Path(user_cache_dir(APP_NAME)) / "analyses.sqlite"
 
 
 def load_settings(path: Path | None = None) -> Settings:

@@ -1,4 +1,10 @@
-from choppeur.core.settings import Settings, load_settings, save_settings
+from choppeur.core.settings import (
+    Settings,
+    default_cache_path,
+    default_settings_path,
+    load_settings,
+    save_settings,
+)
 
 
 def test_defaults():
@@ -29,6 +35,13 @@ def test_save_then_load_roundtrip(tmp_path):
 def test_load_missing_file_returns_defaults(tmp_path):
     loaded = load_settings(tmp_path / "does_not_exist.toml")
     assert loaded == Settings()
+
+
+def test_default_paths_point_to_choppeur_directories():
+    assert default_settings_path().name == "settings.toml"
+    assert default_cache_path().name == "analyses.sqlite"
+    assert "choppeur" in str(default_settings_path())
+    assert "choppeur" in str(default_cache_path())
 
 
 def test_load_partial_file_fills_in_defaults(tmp_path):

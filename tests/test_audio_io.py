@@ -51,6 +51,40 @@ def test_export_segment_writes_expected_duration(tmp_path):
     assert len(written) == SAMPLE_RATE  # 1 seconde
 
 
+def test_read_track_extracts_tags_and_audio_info(tmp_path):
+    from mutagen.flac import FLAC
+
+    path = tmp_path / "03 - Etched Headplate.flac"
+    sf.write(str(path), np.zeros(SAMPLE_RATE, dtype="float32"), SAMPLE_RATE, subtype="PCM_16")
+    tags = FLAC(str(path))
+    tags["artist"] = "Burial"
+    tags["album"] = "Untrue"
+    tags["title"] = "Etched Headplate"
+    tags["tracknumber"] = "3"
+    tags.save()
+
+    track = audio_io.read_track(path)
+
+    assert track.artist == "Burial"
+    assert track.album == "Untrue"
+    assert track.title == "Etched Headplate"
+    assert track.track_number == 3
+    assert track.sample_rate == SAMPLE_RATE
+    assert track.duration_seconds == pytest.approx(1.0, rel=1e-2)
+
+
+def test_read_track_falls_back_to_filename_without_tags(tmp_path):
+    path = tmp_path / "untagged.wav"
+    _write_sine(path, duration_seconds=0.5)
+
+    track = audio_io.read_track(path)
+
+    assert track.artist == "Inconnu"
+    assert track.album == "Inconnu"
+    assert track.title == "untagged"
+    assert track.track_number is None
+
+
 def test_export_candidates_writes_named_files_without_overwrite(tmp_path):
     samples = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
     track = Track(

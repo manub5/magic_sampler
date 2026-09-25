@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
-AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".aiff", ".aif"}
+from choppeur.core.audio_io import AUDIO_EXTENSIONS
 
 _PATH_ROLE = Qt.ItemDataRole.UserRole
 
